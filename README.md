@@ -163,7 +163,7 @@ firebase deploy --only hosting
     "kd": 0.1,
     "manual_trigger": false,
     "rain_threshold_hpa": 1.5,
-    "telegram_chat_id": "8984362218"
+    "telegram_chat_id": "8984302218"
   }
   ```
 * `/history`: Nhật ký chu kỳ tưới dạng append-only phục vụ thống kê và vẽ biểu đồ.
