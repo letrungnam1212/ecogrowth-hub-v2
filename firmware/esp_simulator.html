@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EcoGrowth Hub V2 — ESP32 Device Simulator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  body { font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+  #logConsole { font-family: ui-monospace, Consolas, monospace; }
+  #logConsole::-webkit-scrollbar { width: 6px; }
+  #logConsole::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+</style>
+</head>
+<body class="bg-slate-900 text-gray-100 min-h-screen pb-10">
+
+<header class="bg-slate-950 text-white sticky top-0 z-10 border-b border-slate-800 shadow-md">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-slate-900 shadow">
+        <i class="fa-solid fa-microchip text-xl"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold leading-tight">EcoGrowth Hub — ESP32 <span class="text-emerald-400">Firmware Simulator</span></h1>
+        <p class="text-xs text-slate-400">Giả lập chu kỳ điều khiển PID, Dự báo mưa & Giao tiếp Firebase</p>
+      </div>
+    </div>
+    <div id="connBadge" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
+      <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span><span id="connText">Đang kết nối Firebase...</span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+
+  <!-- HƯỚNG DẪN KIỂM THỬ -->
+  <div class="bg-slate-800/80 border border-slate-700 text-slate-300 text-xs sm:text-sm rounded-2xl p-4 flex items-start gap-3">
+    <i class="fa-solid fa-circle-info text-emerald-400 text-base mt-0.5"></i>
+    <div>
+      Tab này đóng vai trò <b>vi điều khiển ESP32 ảo</b>: tự chạy thuật toán tính sai số PID, dự báo thời tiết cục bộ, kích hoạt bơm và tự động đưa chế độ về <code>AUTO</code> khi tưới xong[cite: 2].
+      Mở song song tab này với <code>index.html</code> (Dashboard) để quan sát dữ liệu đồng bộ thời gian thực[cite: 2].
+    </div>
+  </div>
+
+  <!-- CONTROL PANEL -->
+  <section class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-sm space-y-4">
+    <div class="flex flex-wrap justify-between items-center gap-3 border-b border-slate-700 pb-3">
+      <h2 class="text-sm font-bold flex items-center gap-2 text-white">
+        <i class="fa-solid fa-sliders text-emerald-400"></i> Bảng Điều Khiển Mô Phỏng
+      </h2>
+      <div class="flex items-center gap-2">
+        <button id="btnStart" onclick="startSim()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all">
+          <i class="fa-solid fa-play"></i> Bắt đầu
+        </button>
+        <button id="btnStop" onclick="stopSim()" disabled class="bg-slate-700 text-slate-500 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 cursor-not-allowed">
+          <i class="fa-solid fa-pause"></i> Tạm dừng
+        </button>
+        <button onclick="resetSim()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all">
+          <i class="fa-solid fa-rotate-left"></i> Reset
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div>
+        <label class="text-[11px] font-semibold text-slate-400 block mb-1">Chu kỳ lặp (giây)</label>
+        <input id="tickSpeed" type="number" min="1" max="10" value="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none" />
+      </div>
+      <div>
+        <label class="text-[11px] font-semibold text-slate-400 block mb-1">Tốc độ bốc hơi đất (%/chu kỳ)</label>
+        <input id="dryRate" type="number" step="0.05" min="0" max="2" value="0.3" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none" />
+      </div>
+      <div>
+        <label class="text-[11px] font-semibold text-slate-400 block mb-1">Độ ẩm đất khởi tạo (%)</label>
+        <input id="startMoisture" type="number" min="0" max="100" value="45" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 outline-none" />
+      </div>
+      <div>
+        <label class="text-[11px] font-semibold text-slate-400 block mb-1">Trạng thái FSM</label>
+        <div id="simFsmState" class="w-full border border-slate-700 bg-slate-900 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-400">IDLE</div>
+      </div>
+    </div>
+
+    <!-- TẠO SỰ KIỆN MÔI TRƯỜNG TEST -->
+    <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-700/60">
+      <button onclick="forceRainEvent()" class="bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 border border-blue-700/50 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+        <i class="fa-solid fa-cloud-showers-heavy"></i> Ép tụt áp suất (Test RAIN_HOLD)
+      </button>
+      <button onclick="forceDrought()" class="bg-rose-900/40 hover:bg-rose-900/60 text-rose-300 border border-rose-700/50 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+        <i class="fa-solid fa-sun"></i> Làm khô đất ngay (15%)
+      </button>
+      <button onclick="forceHeatShock()" class="bg-orange-900/40 hover:bg-orange-900/60 text-orange-300 border border-orange-700/50 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+        <i class="fa-solid fa-temperature-high"></i> Sốc nhiệt (39°C / 25% ẩm)
+      </button>
+      <button onclick="forceLowLight()" class="bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-700/50 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+        <i class="fa-regular fa-moon"></i> Thiếu sáng (150 Lux)
+      </button>
+      <button onclick="clearRain()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+        <i class="fa-solid fa-rotate"></i> Reset môi trường
+      </button>
+    </div>
+  </section>
+
+  <!-- THÔNG SỐ CẢM BIẾN THỜI GIAN THỰC -->
+  <section class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Độ ẩm đất</span>
+      <div id="simSoil" class="text-xl font-bold text-emerald-400 font-mono">--%</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Nhiệt độ</span>
+      <div id="simTemp" class="text-xl font-bold text-orange-400 font-mono">--°C</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Ẩm không khí</span>
+      <div id="simHum" class="text-xl font-bold text-blue-400 font-mono">--%</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Ánh sáng</span>
+      <div id="simLux" class="text-xl font-bold text-amber-400 font-mono">-- Lux</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Áp suất</span>
+      <div id="simPressure" class="text-xl font-bold text-indigo-400 font-mono">-- hPa</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Relay Bơm</span>
+      <div id="simPump" class="text-xl font-bold text-slate-500 font-mono">OFF</div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+      <span class="text-[10px] text-slate-400 font-semibold uppercase block">Kp Tự Học</span>
+      <div id="simKp" class="text-xl font-bold text-purple-400 font-mono">2.00</div>
+    </div>
+  </section>
+
+  <!-- LOG CONSOLE FIRMWARE -->
+  <section class="bg-slate-950 rounded-2xl p-4 border border-slate-800 shadow-inner">
+    <div class="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
+      <h3 class="text-xs font-bold text-slate-300 flex items-center gap-2">
+        <i class="fa-solid fa-terminal text-emerald-400"></i> Serial Terminal — Log Vi Điều Khiển ESP32
+      </h3>
+      <button onclick="document.getElementById('logConsole').innerHTML=''" class="text-[10px] text-slate-500 hover:text-slate-300">
+        Xoá màn hình
+      </button>
+    </div>
+    <div id="logConsole" class="h-80 overflow-y-auto text-xs leading-relaxed space-y-1 text-slate-300"></div>
+  </section>
+
+</main>
+
+<script>
+// =================== 1. FIREBASE INITIALIZATION ===================
+const firebaseConfig = {
+  databaseURL: "https://ecogrowth-v2-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const currentRef = db.ref("current");
+const configRef = db.ref("config");
+const historyRef = db.ref("history");
+const connectedRef = db.ref(".info/connected");
+
+connectedRef.on("value", snap => {
+  const ok = snap.val() === true;
+  const badge = document.getElementById("connBadge");
+  const text = document.getElementById("connText");
+  if (ok) {
+    badge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+    text.textContent = "Firebase Online";
+  } else {
+    badge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/40";
+    text.textContent = "Mất kết nối";
+  }
+});
+
+// =================== 2. SIMULATOR STATE ===================
+let cfg = {
+  soil_setpoint: 60,
+  mode: "AUTO",
+  kp: 2.0,
+  ki: 0.5,
+  kd: 0.1,
+  rain_threshold_hpa: 1.5,
+  manual_trigger: false
+};
+
+let sim = {
+  running: false,
+  timer: null,
+  soil: 45,
+  temp: 28,
+  hum: 65,
+  lux: 1200,
+  pressure: 1013.2,
+  pumpOn: false,
+  fsmState: "IDLE", // IDLE, CHECKING, WATERING, MANUAL_WATERING, RAIN_HOLD, LEARNING
+  pressureBuffer: [],
+  forcedRain: false,
+  mlAccumulated: 0,
+  moistureBeforeCycle: 45,
+  manualStartTick: 0
+};
+
+// Đồng bộ config từ Firebase
+configRef.on("value", snap => {
+  const v = snap.val();
+  if (v) {
+    cfg = Object.assign(cfg, v);
+    document.getElementById("simKp").textContent = Number(cfg.kp || 2.0).toFixed(2);
+  }
+});
+
+function log(msg, cls = "text-slate-300") {
+  const el = document.getElementById("logConsole");
+  const t = new Date().toLocaleTimeString("vi-VN");
+  const div = document.createElement("div");
+  div.className = cls;
+  div.textContent = `[${t}] ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function renderUI() {
+  document.getElementById("simSoil").textContent = sim.soil.toFixed(1) + "%";
+  document.getElementById("simTemp").textContent = sim.temp.toFixed(1) + "°C";
+  document.getElementById("simHum").textContent = sim.hum.toFixed(1) + "%";
+  document.getElementById("simLux").textContent = Math.round(sim.lux) + " Lux";
+  document.getElementById("simPressure").textContent = sim.pressure.toFixed(1) + " hPa";
+  
+  const pumpEl = document.getElementById("simPump");
+  pumpEl.textContent = sim.pumpOn ? "ON" : "OFF";
+  pumpEl.className = "text-xl font-bold font-mono " + (sim.pumpOn ? "text-emerald-400" : "text-slate-500");
+
+  const fsmEl = document.getElementById("simFsmState");
+  fsmEl.textContent = sim.fsmState;
+  if (sim.fsmState === "WATERING" || sim.fsmState === "MANUAL_WATERING") {
+    fsmEl.className = "w-full border border-emerald-500/50 bg-emerald-950/50 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-emerald-400";
+  } else if (sim.fsmState === "RAIN_HOLD") {
+    fsmEl.className = "w-full border border-blue-500/50 bg-blue-950/50 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-blue-400";
+  } else {
+    fsmEl.className = "w-full border border-slate-700 bg-slate-900 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-400";
+  }
+}
+
+// =================== 3. MÁY TRẠNG THÁI FIRMWARE (FSM TICK) ===================
+function tick() {
+  // 1. Cập nhật cảm biến (Random Walk & Đất khô dần)
+  const dryRate = parseFloat(document.getElementById("dryRate").value) || 0.3;
+  if (!sim.pumpOn) {
+    sim.soil = clamp(sim.soil - dryRate - (Math.random() * 0.05), 0, 100);
+  }
+  sim.temp = clamp(sim.temp + (Math.random() - 0.5) * 0.4, 20, 42);
+  sim.hum = clamp(sim.hum + (Math.random() - 0.5) * 1.5, 20, 95);
+  sim.lux = clamp(sim.lux + (Math.random() - 0.5) * 50, 80, 3000);
+  if (!sim.forcedRain) {
+    sim.pressure = clamp(sim.pressure + (Math.random() - 0.5) * 0.1, 995, 1025);
+  }
+
+  // 2. Dự báo mưa kép (Tính độ dốc áp suất cục bộ BME280)
+  sim.pressureBuffer.push(sim.pressure);
+  if (sim.pressureBuffer.length > 10) sim.pressureBuffer.shift();
+  const slope = sim.pressureBuffer.length > 2 
+    ? sim.pressureBuffer[0] - sim.pressureBuffer[sim.pressureBuffer.length - 1] 
+    : 0;
+  const isRainExpected = slope >= (cfg.rain_threshold_hpa || 1.5);
+
+  // 3. FSM Chuyển trạng thái
+  if (cfg.mode === "MANUAL" && cfg.manual_trigger === true && sim.fsmState === "IDLE") {
+    sim.fsmState = "MANUAL_WATERING";
+    sim.moistureBeforeCycle = sim.soil;
+    sim.mlAccumulated = 0;
+    sim.manualStartTick = Date.now();
+    log(`[MANUAL] Nhận lệnh tưới cưỡng bức từ Dashboard! Kích hoạt Relay bơm 150ml...`, "text-amber-300 font-bold");
+  } else if (cfg.mode === "AUTO" && isRainExpected && sim.fsmState === "IDLE") {
+    sim.fsmState = "RAIN_HOLD";
+    log(`[RAIN_HOLD] Dự báo mưa cục bộ (Delta P = ${slope.toFixed(2)} hPa). Tạm hoãn tưới bảo vệ rễ!`, "text-blue-300");
+  } else if (cfg.mode === "AUTO" && sim.soil < (cfg.soil_setpoint || 60) && sim.fsmState === "IDLE") {
+    sim.fsmState = "WATERING";
+    sim.moistureBeforeCycle = sim.soil;
+    sim.mlAccumulated = 0;
+    const err = (cfg.soil_setpoint - sim.soil).toFixed(1);
+    log(`[PID_START] Error = ${err}% (SP: ${cfg.soil_setpoint}%, PV: ${sim.soil.toFixed(1)}%). Kích hoạt bơm PID...`, "text-emerald-300 font-semibold");
+  }
+
+  // 4. Xử lý trạng thái đang tưới
+  if (sim.fsmState === "WATERING" || sim.fsmState === "MANUAL_WATERING") {
+    sim.pumpOn = true;
+    const stepMoisture = (sim.fsmState === "MANUAL_WATERING") ? 2.5 : clamp((cfg.soil_setpoint - sim.soil) * 0.4, 0.5, 4.0);
+    sim.soil = clamp(sim.soil + stepMoisture, 0, 100);
+    sim.mlAccumulated += Math.round(stepMoisture * 11 + Math.random() * 3);
+
+    const isFinished = (sim.fsmState === "MANUAL_WATERING") 
+      ? sim.mlAccumulated >= 150 
+      : sim.soil >= (cfg.soil_setpoint - 0.4);
+
+    if (isFinished) {
+      sim.pumpOn = false;
+      const wasManual = (sim.fsmState === "MANUAL_WATERING");
+      sim.fsmState = "LEARNING";
+
+      // PID Adaptive Gain Update
+      const gain = Math.max(0.1, sim.soil - sim.moistureBeforeCycle);
+      const ratio = sim.mlAccumulated / gain;
+      const adjust = clamp(11.5 / ratio, 0.9, 1.1);
+      cfg.kp = clamp(cfg.kp * adjust, 0.5, 6.0);
+
+      const entry = {
+        timestamp: Date.now(),
+        ml_used: sim.mlAccumulated,
+        moisture_before: Number(sim.moistureBeforeCycle.toFixed(1)),
+        moisture_after: Number(sim.soil.toFixed(1)),
+        kp_updated: Number(cfg.kp.toFixed(3)),
+        trigger: wasManual ? "MANUAL" : "AUTO"
+      };
+
+      historyRef.push(entry);
+      configRef.update({ kp: entry.kp_updated });
+      log(`[PID_LEARNED] Hoàn tất tưới ${entry.ml_used}ml (${entry.moisture_before}% -> ${entry.moisture_after}%). Kp cập nhật: ${entry.kp_updated}`, "text-emerald-400 font-bold");
+
+      // ESP32 TỰ ĐỘNG TRẢ VỀ AUTO
+      if (wasManual) {
+        configRef.update({ manual_trigger: false, mode: "AUTO" });
+        log(`[EDGE_REVERT] ESP32 đã hoàn thành 150ml và tự động trả lại chế độ AUTO trên Cloud.`, "text-purple-300 font-semibold");
+      }
+
+      sim.fsmState = "IDLE";
+    }
+  } else if (sim.fsmState === "RAIN_HOLD") {
+    historyRef.push({
+      timestamp: Date.now(),
+      ml_used: 0,
+      moisture_before: Number(sim.soil.toFixed(1)),
+      moisture_after: Number(sim.soil.toFixed(1)),
+      kp_updated: Number(cfg.kp.toFixed(3)),
+      trigger: "RAIN_HOLD"
+    });
+    sim.fsmState = "IDLE";
+  }
+
+  // 5. Đồng bộ Firebase /current
+  currentRef.set({
+    soil_moisture: Number(sim.soil.toFixed(1)),
+    temperature: Number(sim.temp.toFixed(1)),
+    humidity: Number(sim.hum.toFixed(1)),
+    lux: Math.round(sim.lux),
+    pressure: Number(sim.pressure.toFixed(1)),
+    pump_status: sim.pumpOn ? "ON" : "OFF",
+    rain_flag: isRainExpected,
+    last_updated: Date.now()
+  });
+
+  renderUI();
+}
+
+// =================== 4. ĐIỀU KHIỂN SIMULATOR ===================
+function startSim() {
+  if (sim.running) return;
+  sim.soil = parseFloat(document.getElementById("startMoisture").value) || 45;
+  sim.running = true;
+  document.getElementById("btnStart").disabled = true;
+  document.getElementById("btnStart").className = "bg-slate-700 text-slate-500 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 cursor-not-allowed";
+  document.getElementById("btnStop").disabled = false;
+  document.getElementById("btnStop").className = "bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all";
+  
+  const speed = Math.max(1, parseInt(document.getElementById("tickSpeed").value) || 3) * 1000;
+  sim.timer = setInterval(tick, speed);
+  log("Bắt đầu vòng lặp Firmware ESP32...", "text-emerald-400 font-bold");
+  tick();
+}
+
+function stopSim() {
+  sim.running = false;
+  clearInterval(sim.timer);
+  document.getElementById("btnStart").disabled = false;
+  document.getElementById("btnStart").className = "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all";
+  document.getElementById("btnStop").disabled = true;
+  document.getElementById("btnStop").className = "bg-slate-700 text-slate-500 text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 cursor-not-allowed";
+  log("Đã tạm dừng mô phỏng.", "text-amber-400");
+}
+
+function resetSim() {
+  stopSim();
+  sim.soil = parseFloat(document.getElementById("startMoisture").value) || 45;
+  sim.temp = 28; sim.hum = 65; sim.lux = 1200; sim.pressure = 1013.2;
+  sim.pumpOn = false; sim.fsmState = "IDLE"; sim.pressureBuffer = []; sim.forcedRain = false;
+  renderUI();
+  log("Đã reset trạng thái ESP32 về ban đầu.", "text-slate-400");
+}
+
+function forceRainEvent() {
+  sim.forcedRain = true;
+  sim.pressure -= 2.5;
+  log("[Mô phỏng] Ép tụt áp suất cục bộ -2.5 hPa để kích hoạt RAIN_HOLD", "text-blue-300 font-bold");
+}
+function clearRain() {
+  sim.forcedRain = false;
+  sim.pressureBuffer = [];
+  sim.pressure = 1013.2;
+  log("[Mô phỏng] Đã hồi phục thời tiết và áp suất bình thường", "text-slate-400");
+}
+function forceDrought() {
+  sim.soil = 15;
+  log("[Mô phỏng] Ép độ ẩm đất = 15% để kiểm tra phản hồi tưới PID", "text-rose-300 font-bold");
+}
+function forceHeatShock() {
+  sim.temp = 39; sim.hum = 25;
+  log("[Mô phỏng] Đặt nhiệt độ 39°C / Ẩm 25% để kiểm tra cảnh báo Smart Advisor", "text-orange-300 font-bold");
+}
+function forceLowLight() {
+  sim.lux = 150;
+  log("[Mô phỏng] Đặt ánh sáng 150 Lux để kiểm tra cảnh báo thiếu sáng", "text-amber-300 font-bold");
+}
+
+renderUI();
+log("Simulator đã sẵn sàng. Nhấn 'Bắt đầu' để chạy vòng lặp vi điều khiển.", "text-slate-400");
+</script>
+</body>
+</html>
