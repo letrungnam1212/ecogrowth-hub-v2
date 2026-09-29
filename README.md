@@ -1,12 +1,5 @@
 # 🌱 EcoGrowth Hub V2 — Smart Adaptive PID Irrigation & Dual Rain Forecasting IoT System
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-ESP32-blue?logo=espressif" alt="ESP32" />
-  <img src="https://img.shields.io/badge/Cloud-Firebase%20RTDB-amber?logo=firebase" alt="Firebase" />
-  <img src="https://img.shields.io/badge/Protocol-MQTT%20%7C%20REST-emerald" alt="Protocol" />
-  <img src="https://img.shields.io/badge/Frontend-TailwindCSS%20%7C%20Chart.js-sky?logo=javascript" alt="Frontend" />
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
-</p>
 
 > **EcoGrowth Hub V2** là hệ thống tưới cây tự động khép kín ứng dụng lý thuyết **Điều khiển Tự động (Control Theory)** kết hợp kiến trúc **IoT 3 lớp**. Khác biệt với các thiết bị bật/tắt (On/Off hysteresis) thông thường, EcoGrowth Hub V2 sử dụng bộ điều khiển **PID đóng vòng kín** kết hợp thuật toán **Adaptive Gain Tuning** tự học hệ số $K_p$ on-device và cơ chế **dự báo mưa kép** bảo vệ cây ngay cả khi mất mạng.
 
