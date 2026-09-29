@@ -1,0 +1,50 @@
+/* ===================================================
+   EcoGrowth Hub V2 — Custom Theme & Micro-animations
+   =================================================== */
+
+@layer utilities {
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: #10b981;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.1s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+  }
+}
+
+.led-active {
+  background-color: #10b981 !important;
+  box-shadow: 0 0 10px #10b981, 0 0 20px #10b981;
+}
+
+.led-ping-active {
+  background-color: #a7f3d0 !important;
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.preset-btn:focus {
+  outline: 2px solid #10b981;
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
