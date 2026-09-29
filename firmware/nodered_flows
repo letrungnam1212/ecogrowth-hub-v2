@@ -1,0 +1,347 @@
+[
+  {
+    "id": "tab_master",
+    "type": "tab",
+    "label": "EcoGrowth Hub Integrated",
+    "disabled": false,
+    "info": "Luồng mô phỏng cảm biến, tích hợp HiveMQ MQTT, Firebase RTDB, Telegram Alert và OpenWeatherMap cho EcoGrowth Hub V2"
+  },
+  {
+    "id": "inject_loop",
+    "type": "inject",
+    "z": "tab_master",
+    "name": "Chu kỳ 10s (Auto Loop)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "10",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payloadType": "date",
+    "x": 170,
+    "y": 120,
+    "wires": [
+      [
+        "func_virtual_sensors"
+      ]
+    ]
+  },
+  {
+    "id": "func_virtual_sensors",
+    "type": "function",
+    "z": "tab_master",
+    "name": "Tạo dữ liệu & Đánh giá Smart Advisor",
+    "func": "// 1. Giả lập giá trị 4 nhóm cảm biến của EcoGrowth Hub V2\nlet soil = +(30 + Math.random() * 40).toFixed(1);\nlet temp = +(26 + Math.random() * 12).toFixed(1); // Nhiệt độ dao động\nlet hum = +(40 + Math.random() * 30).toFixed(1);\nlet lux = Math.floor(400 + Math.random() * 1500);\nlet press = +(1008 + Math.random() * 6).toFixed(1);\n\nlet telemetry = {\n    soil_moisture: soil,\n    temperature: temp,\n    humidity: hum,\n    lux: lux,\n    pressure: press,\n    pump_status: soil < 40 ? \"ON\" : \"OFF\",\n    rain_flag: false,\n    last_updated: Math.floor(Date.now() / 1000)\n};\n\n// 2. Logic Smart Advisor: Đẩy cảnh báo nếu có bất thường\nlet alertMsg = \"\";\nif (soil < 32.0) {\n    alertMsg = `⚠ [EcoGrowth Hub]: Cây đang khát nước nghiêm trọng! (Độ ẩm đất: ${soil}%)`;\n} else if (temp > 36.0 && hum < 45.0) {\n    alertMsg = `🔥 [EcoGrowth Hub]: Cảnh báo sốc nhiệt! (Nhiệt độ: ${temp}°C, Độ ẩm: ${hum}%)`;\n} else if (lux < 500) {\n    alertMsg = `☁ [EcoGrowth Hub]: Cảnh báo thiếu sáng liên tục! (Lux: ${lux})`;\n}\n\nreturn [\n    { payload: telemetry }, // Chân 1: Bắn lên MQTT & Firebase\n    alertMsg ? { payload: alertMsg } : null // Chân 2: Kích hoạt Telegram nếu có cảnh báo\n];",
+    "outputs": 2,
+    "x": 490,
+    "y": 120,
+    "wires": [
+      [
+        "mqtt_out_all",
+        "http_firebase_write",
+        "func_split_dashboard"
+      ],
+      [
+        "func_tg_format"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out_all",
+    "type": "mqtt out",
+    "z": "tab_master",
+    "name": "Publish HiveMQ (ecogrowth/telemetry)",
+    "topic": "ecogrowth/telemetry",
+    "qos": "0",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "hivemq_broker_config",
+    "x": 890,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "http_firebase_write",
+    "type": "http request",
+    "z": "tab_master",
+    "name": "Ghi đè /current lên Firebase",
+    "method": "PUT",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "https://ecogrowth-v2-default-rtdb.asia-southeast1.firebasedatabase.app/current.json",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 860,
+    "y": 140,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "func_tg_format",
+    "type": "function",
+    "z": "tab_master",
+    "name": "Gói tin Telegram",
+    "func": "msg.payload = {\n    chat_id: \"8984302218\",\n    text: msg.payload\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 770,
+    "y": 220,
+    "wires": [
+      [
+        "http_send_tg"
+      ]
+    ]
+  },
+  {
+    "id": "http_send_tg",
+    "type": "http request",
+    "z": "tab_master",
+    "name": "Gửi Telegram Alert",
+    "method": "POST",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "https://api.telegram.org/bot8952177455:AAEvtIUy5aSurX1Pz7OJ22fmm7u8gD8wJnU/sendMessage",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 990,
+    "y": 220,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "inject_weather",
+    "type": "inject",
+    "z": "tab_master",
+    "name": "Check Weather (30p)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "1800",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 1,
+    "topic": "",
+    "payloadType": "date",
+    "x": 160,
+    "y": 340,
+    "wires": [
+      [
+        "http_get_weather"
+      ]
+    ]
+  },
+  {
+    "id": "http_get_weather",
+    "type": "http request",
+    "z": "tab_master",
+    "name": "Gọi OpenWeatherMap API",
+    "method": "GET",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "https://api.openweathermap.org/data/2.5/forecast?lat=10.762622&lon=106.660172&appid=45c6f318d9053113d5b865f0117fedc5&units=metric",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 440,
+    "y": 340,
+    "wires": [
+      [
+        "func_parse_weather"
+      ]
+    ]
+  },
+  {
+    "id": "func_parse_weather",
+    "type": "function",
+    "z": "tab_master",
+    "name": "Phân tích xác suất mưa",
+    "func": "let pop = msg.payload.list[0].pop * 100;\nlet rain_flag = pop > 60;\n\nif (rain_flag) {\n    return {\n        payload: {\n            chat_id: \"8984302218\",\n            text: `🌧 [EcoGrowth Hub]: Dự báo xác suất mưa ${pop}%. Hệ thống chuyển chế độ RAIN_HOLD (tạm hoãn tưới nước)!`\n        }\n    };\n}\nreturn null;",
+    "outputs": 1,
+    "x": 730,
+    "y": 340,
+    "wires": [
+      [
+        "http_send_tg"
+      ]
+    ]
+  },
+  {
+    "id": "func_split_dashboard",
+    "type": "function",
+    "z": "tab_master",
+    "name": "Tách hiển thị Dashboard",
+    "func": "return [\n  { payload: msg.payload.soil_moisture },\n  { payload: msg.payload.temperature },\n  { payload: msg.payload.lux }\n];",
+    "outputs": 3,
+    "x": 450,
+    "y": 240,
+    "wires": [
+      [
+        "ui_gauge_soil"
+      ],
+      [
+        "ui_chart_temp"
+      ],
+      [
+        "ui_gauge_lux"
+      ]
+    ]
+  },
+  {
+    "id": "ui_gauge_soil",
+    "type": "ui_gauge",
+    "z": "tab_master",
+    "name": "Độ ẩm đất (%)",
+    "group": "ui_group_main",
+    "order": 1,
+    "width": 6,
+    "height": 5,
+    "gtype": "gage",
+    "title": "Độ ẩm đất",
+    "label": "%",
+    "format": "{{value}}",
+    "min": 0,
+    "max": 100,
+    "colors": [
+      "#ca3838",
+      "#e6e600",
+      "#2ca02c"
+    ],
+    "seg1": "30",
+    "seg2": "70",
+    "className": "",
+    "x": 680,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_temp",
+    "type": "ui_chart",
+    "z": "tab_master",
+    "name": "Biểu đồ Nhiệt độ",
+    "group": "ui_group_main",
+    "order": 2,
+    "width": 6,
+    "height": 5,
+    "label": "Nhiệt độ (°C)",
+    "chartType": "line",
+    "ymin": "15",
+    "ymax": "45",
+    "x": 690,
+    "y": 310,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "ui_gauge_lux",
+    "type": "ui_gauge",
+    "z": "tab_master",
+    "name": "Cường độ sáng (Lux)",
+    "group": "ui_group_main",
+    "order": 3,
+    "width": 6,
+    "height": 5,
+    "gtype": "gage",
+    "title": "Cường độ sáng",
+    "label": "Lux",
+    "format": "{{value}}",
+    "min": 0,
+    "max": 3000,
+    "colors": [
+      "#333333",
+      "#ffcc00",
+      "#00bfff"
+    ],
+    "seg1": "500",
+    "seg2": "2000",
+    "className": "",
+    "x": 700,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "ui_group_main",
+    "type": "ui_group",
+    "name": "EcoGrowth Hub Realtime",
+    "tab": "ui_tab_main",
+    "order": 1,
+    "disp": true,
+    "width": "12",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "ui_tab_main",
+    "type": "ui_tab",
+    "name": "Dashboard Giám Sát",
+    "icon": "dashboard",
+    "order": 1,
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "hivemq_broker_config",
+    "type": "mqtt-broker",
+    "name": "EcoGrowth HiveMQ Cloud",
+    "broker": "e5f5bb07869b48419d3f50870dbde3c3.s1.eu.hivemq.cloud",
+    "port": "8883",
+    "tls": "tls_config_node",
+    "clientid": "NodeRED_Simulator",
+    "autoConnect": true,
+    "usetls": true,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsub": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "tls_config_node",
+    "type": "tls-config",
+    "name": "TLS HiveMQ",
+    "cert": "",
+    "key": "",
+    "ca": "",
+    "certname": "",
+    "keyname": "",
+    "caname": "",
+    "servername": "",
+    "verifyservercert": false,
+    "alpnprotocol": ""
+  }
+]
